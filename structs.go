@@ -10,8 +10,7 @@ import (
 )
 
 type StructPool[T any] struct {
-	typ       reflect.Type
-	size      int
+	dataSize  int
 	finalizer bool
 	pool      sync.Pool
 }
@@ -27,17 +26,16 @@ func NewStructPool[T any](finalizer bool) (*StructPool[T], error) {
 	}
 
 	pool := StructPool[T]{
-		typ:       typ,
-		size:      int(typ.Size()),
+		dataSize:  int(typ.Size()),
 		finalizer: finalizer,
 		pool: sync.Pool{New: func() any {
-			return reflect.New(typ).Interface()
+			return new(T)
 		}},
 	}
 
 	log.Printf(
 		"Create new pool for struct[%s] with memo size: %d",
-		pool.typ.Name(), pool.size,
+		typ.Name(), pool.dataSize,
 	)
 
 	return &pool, nil
@@ -59,8 +57,8 @@ func (pool *StructPool[T]) GetEmptyData() *T {
 	underlying := *(*[]byte)(unsafe.Pointer(
 		&reflect.SliceHeader{
 			Data: uintptr(unsafe.Pointer(v)),
-			Len:  pool.size,
-			Cap:  pool.size,
+			Len:  pool.dataSize,
+			Cap:  pool.dataSize,
 		}),
 	)
 

@@ -2,6 +2,7 @@ package pool
 
 import (
 	"reflect"
+	"runtime"
 	"sync"
 	"testing"
 	"unsafe"
@@ -16,6 +17,8 @@ func TestStructPool(t *testing.T) {
 	_, err := NewStructPool[int](true)
 	if err == nil {
 		t.Fatal("Pool data type assert failed")
+	} else {
+		t.Log(err)
 	}
 
 	pool, err := NewStructPool[TestStruct](true)
@@ -36,7 +39,8 @@ func TestStructPool(t *testing.T) {
 	for idx := 0; idx < 10; idx++ {
 		v := pool.GetData()
 		t.Logf("%#v", v)
-		pool.PutData(v)
+		// pool.PutData(v)
+		runtime.GC()
 	}
 
 	v3 := pool.GetEmptyData()
