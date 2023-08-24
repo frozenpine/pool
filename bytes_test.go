@@ -28,6 +28,9 @@ func TestBytesPool(t *testing.T) {
 
 		t.Log(len(data), cap(data), (*reflect.SliceHeader)(unsafe.Pointer(&data)).Data)
 	}
+
+	data := GetByteSlice()
+	t.Log(len(data), cap(data))
 }
 
 func BenchmarkBytesPool(b *testing.B) {
