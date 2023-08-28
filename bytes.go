@@ -5,8 +5,12 @@ import (
 )
 
 const (
-	MinBytesSize = 1 << 6
-	MaxBytesSize = 1 << 12
+	minBits         = 6
+	defaultBits     = 9
+	maxBits         = 12
+	MinBytesSize    = 1 << minBits     // 64 bytes
+	defaultByteSize = 1 << defaultBits // 512 bytes
+	MaxBytesSize    = 1 << maxBits     // 4096 bytes
 )
 
 type BytesPool struct {
@@ -14,21 +18,25 @@ type BytesPool struct {
 	pool sync.Pool
 }
 
-func NewBytesPool(size int) *BytesPool {
-	if size <= 0 {
-		size = MinBytesSize
-	} else if size > MaxBytesSize {
-		size = MaxBytesSize
+func judgeSize(size int) int {
+	if size < MinBytesSize {
+		return MinBytesSize
 	}
 
-	return &BytesPool{
-		size: size,
-		pool: sync.Pool{
-			New: func() any {
-				return make([]byte, size)
-			},
-		},
+	if size > MaxBytesSize {
+		return MaxBytesSize
 	}
+
+	return size
+}
+
+func NewBytesPool(size int) *BytesPool {
+	pool := BytesPool{
+		size: calcSize(judgeSize(size)),
+	}
+
+	pool.pool.New = func() any { return make([]byte, pool.size) }
+	return &pool
 }
 
 func (pool *BytesPool) GetSlice() []byte {
@@ -60,31 +68,60 @@ func (pool *BytesPool) GetEmptySizedSlice(size int) []byte {
 }
 
 func (pool *BytesPool) PutSlice(data []byte) {
-	if cap(data) < pool.size {
+	capSize := cap(data)
+	if capSize < pool.size || capSize > MaxBytesSize {
 		return
 	}
 
 	pool.pool.Put(data[:pool.size])
 }
 
-var defaulBytestPool = NewBytesPool(MaxBytesSize)
+func calcSize(size int) int {
+	if size <= 0 {
+		return 1
+	}
+
+	size = size - 1
+	size |= size >> 1
+	size |= size >> 2
+	size |= size >> 4
+	size |= size >> 8
+	size |= size >> 16
+
+	return size + 1
+}
+
+var defaulBytestPool = map[int]*BytesPool{}
+
+func init() {
+	for i := minBits; i <= maxBits; i++ {
+		size := 1 << i
+		defaulBytestPool[size] = NewBytesPool(size)
+	}
+}
 
 func GetByteSlice() []byte {
-	return defaulBytestPool.GetSlice()
+	return defaulBytestPool[defaultByteSize].GetSlice()
 }
 
 func GetEmptyByteSlice() []byte {
-	return defaulBytestPool.GetEmptySlice()
+	return defaulBytestPool[defaultByteSize].GetEmptySlice()
 }
 
 func GetSizedByteSlice(size int) []byte {
-	return defaulBytestPool.GetSizedSlice(size)
+	return defaulBytestPool[calcSize(judgeSize(size))].GetSlice()
 }
 
 func GetEmptySizedByteSlice(size int) []byte {
-	return defaulBytestPool.GetEmptySizedSlice(size)
+	return defaulBytestPool[calcSize(judgeSize(size))].GetEmptySlice()
 }
 
 func PutByteSlice(in []byte) {
-	defaulBytestPool.PutSlice(in)
+	capSize := cap(in)
+
+	if capSize < MinBytesSize || capSize > MaxBytesSize {
+		return
+	}
+
+	defaulBytestPool[calcSize(capSize)>>1].PutSlice(in)
 }

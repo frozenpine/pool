@@ -23,7 +23,7 @@ func TestBytesPool(t *testing.T) {
 
 	pool.PutSlice(make([]byte, 0, 5000))
 
-	for idx := 0; idx < 2; idx++ {
+	for idx := 0; idx < 10; idx++ {
 		data := pool.GetSlice()
 
 		t.Log(len(data), cap(data), (*reflect.SliceHeader)(unsafe.Pointer(&data)).Data)
@@ -63,7 +63,7 @@ func BenchmarkBytesPool(b *testing.B) {
 	b.Run("stack", func(b3 *testing.B) {
 		var buff []byte
 		for i := 0; i < b3.N; i++ {
-			buff = make([]byte, MinBytesSize)
+			buff = make([]byte, MaxBytesSize)
 		}
 
 		b.Log(len(buff))
@@ -72,4 +72,38 @@ func BenchmarkBytesPool(b *testing.B) {
 	close(ch)
 
 	wg.Wait()
+}
+
+func TestCalcuSize(t *testing.T) {
+	if calcSize(-1) != 1 {
+		t.Fatal("failed")
+	}
+
+	if calcSize(1) != 1 {
+		t.Fatal("failed")
+	}
+
+	if calcSize(15) != 16 {
+		t.Fatal("failed")
+	}
+
+	if calcSize(112) != 128 {
+		t.Fatal("failed")
+	}
+
+	if calcSize(129) != 256 {
+		t.Fatal("failed")
+	}
+
+	if calcSize(1024) != 1024 {
+		t.Fatal("failed")
+	}
+
+	if calcSize(4092) != 4096 {
+		t.Fatal("failed")
+	}
+
+	if calcSize(4098) != 8192 {
+		t.Fatal("failed")
+	}
 }
