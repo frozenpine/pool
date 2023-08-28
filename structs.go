@@ -10,12 +10,12 @@ import (
 )
 
 type StructPool[T any] struct {
-	dataSize  int
-	finalizer bool
-	pool      sync.Pool
+	dataSize      int
+	finalizerFlag sync.Map
+	pool          sync.Pool
 }
 
-func NewStructPool[T any](finalizer bool) (*StructPool[T], error) {
+func NewStructPool[T any]() (*StructPool[T], error) {
 	data := new(T)
 	typ := reflect.TypeOf(data).Elem()
 
@@ -26,8 +26,7 @@ func NewStructPool[T any](finalizer bool) (*StructPool[T], error) {
 	}
 
 	pool := StructPool[T]{
-		dataSize:  int(typ.Size()),
-		finalizer: finalizer,
+		dataSize: int(typ.Size()),
 		pool: sync.Pool{New: func() any {
 			return new(T)
 		}},
@@ -41,18 +40,19 @@ func NewStructPool[T any](finalizer bool) (*StructPool[T], error) {
 	return &pool, nil
 }
 
-func (pool *StructPool[T]) GetData() *T {
+func (pool *StructPool[T]) GetData(finalizer bool) *T {
 	data := pool.pool.Get().(*T)
 
-	if pool.finalizer {
+	if finalizer {
 		runtime.SetFinalizer(data, pool.pool.Put)
+		pool.finalizerFlag.Store(unsafe.Pointer(data), true)
 	}
 
 	return data
 }
 
-func (pool *StructPool[T]) GetEmptyData() *T {
-	v := pool.GetData()
+func (pool *StructPool[T]) GetEmptyData(finalizer bool) *T {
+	v := pool.GetData(finalizer)
 
 	underlying := *(*[]byte)(unsafe.Pointer(
 		&reflect.SliceHeader{
@@ -70,8 +70,12 @@ func (pool *StructPool[T]) GetEmptyData() *T {
 }
 
 func (pool *StructPool[T]) PutData(data *T) {
-	if data == nil || pool.finalizer {
+	if data == nil {
 		return
+	}
+
+	if pool.finalizerFlag.CompareAndDelete(unsafe.Pointer(data), true) {
+		runtime.SetFinalizer(data, nil)
 	}
 
 	pool.pool.Put(data)

@@ -3,8 +3,10 @@ package pool
 import (
 	"reflect"
 	"runtime"
+	"strconv"
 	"sync"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -13,64 +15,120 @@ type TestStruct struct {
 	Age  int
 }
 
+func TestStructSize(t *testing.T) {
+	v := TestStruct{}
+	t.Log(reflect.TypeOf("").Size(), reflect.TypeOf(1).Size())
+	t.Log(reflect.TypeOf(v).Size(), reflect.TypeOf(&v).Size())
+	t.Log(unsafe.Sizeof(v), unsafe.Sizeof(&v))
+}
+
 func TestStructPool(t *testing.T) {
-	_, err := NewStructPool[int](true)
+	_, err := NewStructPool[int]()
 	if err == nil {
 		t.Fatal("Pool data type assert failed")
 	} else {
 		t.Log(err)
 	}
 
-	pool, err := NewStructPool[TestStruct](true)
+	pool, err := NewStructPool[TestStruct]()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	t.Log(unsafe.Sizeof(reflect.StringHeader{}), unsafe.Sizeof(1))
-
-	v1 := pool.GetData()
-	t.Logf("%#v", v1)
+	v1 := pool.GetData(false)
+	t.Logf("%#v, %+v", v1, unsafe.Pointer(v1))
 
 	v1.Name = "test"
 	v1.Age = 123
 
 	pool.PutData(v1)
 
-	for idx := 0; idx < 10; idx++ {
-		v := pool.GetData()
-		t.Logf("%#v", v)
-		// pool.PutData(v)
+	var ptr *TestStruct
+	for idx := 0; idx < 20; idx++ {
+		ptr = pool.GetData(true)
+		t.Logf("%#v, %+v", ptr, unsafe.Pointer(ptr))
+		ptr.Age = idx
+		ptr.Name = strconv.Itoa(idx)
 		runtime.GC()
+		time.Sleep(time.Second)
 	}
 
-	v3 := pool.GetEmptyData()
-	t.Logf("%#v", v3)
+	v3 := pool.GetEmptyData(false)
+	t.Logf("%#v, %+v", v3, unsafe.Pointer(v3))
+}
+
+var pool = sync.Pool{New: func() any { return new(TestStruct) }}
+
+func poolGet(f bool) *TestStruct {
+	v := pool.Get().(*TestStruct)
+	if f {
+		runtime.SetFinalizer(v, poolReturn)
+	}
+	return v
+}
+
+func poolReturn(v *TestStruct) {
+	if v == nil {
+		return
+	}
+
+	pool.Put(v)
+}
+
+func BenchmarkFinalizer(b *testing.B) {
+	cache := map[string]*TestStruct{}
+
+	b.Run("no set", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			cache["no set"] = poolGet(false)
+
+			poolReturn(cache["no set"])
+		}
+	})
+
+	b.Run("set", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			cache["set"] = poolGet(true)
+		}
+	})
 }
 
 func BenchmarkStructPool(b *testing.B) {
-	p1 := sync.Pool{New: func() any { return new(TestStruct) }}
-
-	p2, _ := NewStructPool[TestStruct](false)
-
-	var ptr *TestStruct
+	pool, _ := NewStructPool[TestStruct]()
 
 	b.Run("origin", func(b *testing.B) {
+		cache := map[uintptr]*TestStruct{}
 		for i := 0; i < b.N; i++ {
-			ptr = p1.Get().(*TestStruct)
+			v := poolGet(false)
+			cache[uintptr(unsafe.Pointer(v))] = v
 		}
+
+		b.Log(len(cache), b.N)
 	})
 
 	b.Run("generic", func(b *testing.B) {
+		cache := map[uintptr]*TestStruct{}
 		for i := 0; i < b.N; i++ {
-			ptr = p2.GetData()
+			v := pool.GetData(false)
+			cache[uintptr(unsafe.Pointer(v))] = v
 		}
+
+		b.Log(len(cache), b.N)
 	})
 
-	b.Logf("%#v, %+v", ptr, ptr)
-	ptr = nil
+	b.Run("generic_gc", func(b *testing.B) {
+		cache := map[uintptr]*TestStruct{}
+		for i := 0; i < b.N; i++ {
+			v := pool.GetData(true)
+			cache[uintptr(unsafe.Pointer(v))] = v
+		}
 
-	ch1 := make(chan *TestStruct, 1)
-	ch2 := make(chan *TestStruct, 1)
+		b.Log(len(cache), b.N)
+	})
+
+	ch1 := make(chan *TestStruct)
+	ch2 := make(chan *TestStruct)
+	ch3 := make(chan *TestStruct)
 	exit := make(chan struct{})
 	wg := sync.WaitGroup{}
 
@@ -79,38 +137,78 @@ func BenchmarkStructPool(b *testing.B) {
 		defer wg.Done()
 
 		var (
-			c1, c2 = true, true
+			r1, r2, r3 = true, true, true
+			c1, c2, c3 = map[uintptr]*TestStruct{}, map[uintptr]*TestStruct{}, map[uintptr]*TestStruct{}
+			n1, n2, n3 = 0, 0, 0
+			ptr        *TestStruct
 		)
 
-		for c1 || c2 {
+		// gc_count := 0
+
+		for r1 || r2 || r3 {
 			select {
 			case <-exit:
 				close(ch1)
 				close(ch2)
-			case v := <-ch1:
-				if v == nil {
-					c1 = false
+				close(ch3)
+			case ptr = <-ch1:
+				if ptr == nil {
+					r1 = false
+					continue
 				}
-				p1.Put(v)
-			case v := <-ch2:
-				if v == nil {
-					c2 = false
+				c1[uintptr(unsafe.Pointer(ptr))] = ptr
+				n1++
+				poolReturn(ptr)
+			case ptr = <-ch2:
+				if ptr == nil {
+					r2 = false
+					continue
 				}
-				p2.PutData(v)
+				c2[uintptr(unsafe.Pointer(ptr))] = ptr
+				n2++
+				pool.PutData(ptr)
+			case ptr = <-ch3:
+				if ptr == nil {
+					r3 = false
+					continue
+				}
+				// gc_count += 1
+				// if gc_count%100 == 0 {
+				// 	runtime.GC()
+				// }
+				c3[uintptr(unsafe.Pointer(ptr))] = ptr
+				n3++
+				pool.PutData(ptr)
 			}
 		}
+
+		b.Log("C1", len(c1), n1)
+		b.Log("C2", len(c2), n2)
+		b.Log("C3", len(c3), n3)
 	}()
 
 	b.Run("origin_return", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			ch1 <- p1.Get().(*TestStruct)
+			ch1 <- poolGet(false)
 		}
+
+		b.Log("C1", b.N)
 	})
 
 	b.Run("generic_return", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			ch2 <- p2.GetData()
+			ch2 <- pool.GetData(false)
 		}
+
+		b.Log("C2", b.N)
+	})
+
+	b.Run("generic_gc", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			ch3 <- pool.GetData(true)
+		}
+
+		b.Log("C3", b.N)
 	})
 
 	exit <- struct{}{}
