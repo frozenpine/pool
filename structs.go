@@ -10,9 +10,9 @@ import (
 )
 
 type StructPool[T any] struct {
-	dataSize      int
-	finalizerFlag sync.Map
-	pool          sync.Pool
+	size  int
+	flags sync.Map
+	pool  sync.Pool
 }
 
 func NewStructPool[T any]() (*StructPool[T], error) {
@@ -26,7 +26,7 @@ func NewStructPool[T any]() (*StructPool[T], error) {
 	}
 
 	pool := StructPool[T]{
-		dataSize: int(typ.Size()),
+		size: int(typ.Size()),
 		pool: sync.Pool{New: func() any {
 			return new(T)
 		}},
@@ -34,31 +34,31 @@ func NewStructPool[T any]() (*StructPool[T], error) {
 
 	log.Printf(
 		"Create new pool for struct[%s] with memo size: %d",
-		typ.Name(), pool.dataSize,
+		typ.Name(), pool.size,
 	)
 
 	return &pool, nil
 }
 
-func (pool *StructPool[T]) GetData(finalizer bool) *T {
-	data := pool.pool.Get().(*T)
+func (p *StructPool[T]) GetData(finalizer bool) *T {
+	data := p.pool.Get().(*T)
 
 	if finalizer {
-		runtime.SetFinalizer(data, pool.pool.Put)
-		pool.finalizerFlag.Store(unsafe.Pointer(data), true)
+		runtime.SetFinalizer(data, p.pool.Put)
+		p.flags.Store(unsafe.Pointer(data), true)
 	}
 
 	return data
 }
 
-func (pool *StructPool[T]) GetEmptyData(finalizer bool) *T {
-	v := pool.GetData(finalizer)
+func (p *StructPool[T]) GetEmptyData(finalizer bool) *T {
+	v := p.GetData(finalizer)
 
 	underlying := *(*[]byte)(unsafe.Pointer(
 		&reflect.SliceHeader{
 			Data: uintptr(unsafe.Pointer(v)),
-			Len:  pool.dataSize,
-			Cap:  pool.dataSize,
+			Len:  p.size,
+			Cap:  p.size,
 		}),
 	)
 
@@ -69,14 +69,14 @@ func (pool *StructPool[T]) GetEmptyData(finalizer bool) *T {
 	return v
 }
 
-func (pool *StructPool[T]) PutData(data *T) {
+func (p *StructPool[T]) PutData(data *T) {
 	if data == nil {
 		return
 	}
 
-	if pool.finalizerFlag.CompareAndDelete(unsafe.Pointer(data), true) {
+	if v, ok := p.flags.LoadAndDelete(unsafe.Pointer(data)); ok && v.(bool) {
 		runtime.SetFinalizer(data, nil)
 	}
 
-	pool.pool.Put(data)
+	p.pool.Put(data)
 }

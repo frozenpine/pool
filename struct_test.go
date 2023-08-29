@@ -57,10 +57,10 @@ func TestStructPool(t *testing.T) {
 	t.Logf("%#v, %+v", v3, unsafe.Pointer(v3))
 }
 
-var pool = sync.Pool{New: func() any { return new(TestStruct) }}
+var testPool = sync.Pool{New: func() any { return new(TestStruct) }}
 
 func poolGet(f bool) *TestStruct {
-	v := pool.Get().(*TestStruct)
+	v := testPool.Get().(*TestStruct)
 	if f {
 		runtime.SetFinalizer(v, poolReturn)
 	}
@@ -72,7 +72,7 @@ func poolReturn(v *TestStruct) {
 		return
 	}
 
-	pool.Put(v)
+	testPool.Put(v)
 }
 
 func BenchmarkFinalizer(b *testing.B) {
@@ -172,10 +172,6 @@ func BenchmarkStructPool(b *testing.B) {
 					r3 = false
 					continue
 				}
-				// gc_count += 1
-				// if gc_count%100 == 0 {
-				// 	runtime.GC()
-				// }
 				c3[uintptr(unsafe.Pointer(ptr))] = ptr
 				n3++
 				pool.PutData(ptr)
