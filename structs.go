@@ -10,9 +10,8 @@ import (
 )
 
 type StructPool[T any] struct {
-	size  int
-	flags sync.Map
-	pool  sync.Pool
+	size int
+	pool sync.Pool
 }
 
 func NewStructPool[T any]() (*StructPool[T], error) {
@@ -44,8 +43,7 @@ func (p *StructPool[T]) GetData(finalizer bool) *T {
 	data := p.pool.Get().(*T)
 
 	if finalizer {
-		runtime.SetFinalizer(data, p.PutData)
-		p.flags.Store(unsafe.Pointer(data), true)
+		runtime.SetFinalizer(data, p.pool.Put)
 	}
 
 	return data
@@ -74,9 +72,7 @@ func (p *StructPool[T]) PutData(data *T) {
 		return
 	}
 
-	if v, ok := p.flags.LoadAndDelete(unsafe.Pointer(data)); ok && v.(bool) {
-		runtime.SetFinalizer(data, nil)
-	}
+	// runtime.SetFinalizer(data, nil)
 
 	p.pool.Put(data)
 }
