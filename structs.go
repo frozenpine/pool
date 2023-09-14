@@ -44,7 +44,7 @@ func (p *StructPool[T]) GetData(finalizer bool) *T {
 	data := p.pool.Get().(*T)
 
 	if finalizer {
-		runtime.SetFinalizer(data, p.pool.Put)
+		runtime.SetFinalizer(data, p.PutData)
 		p.flags.Store(unsafe.Pointer(data), true)
 	}
 
