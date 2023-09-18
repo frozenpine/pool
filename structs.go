@@ -49,6 +49,16 @@ func (p *StructPool[T]) GetData(finalizer bool) *T {
 	return data
 }
 
+func (p *StructPool[T]) GetDataWithInit(finalizer bool, fn func(*T)) *T {
+	data := p.GetData(finalizer)
+
+	if fn != nil {
+		fn(data)
+	}
+
+	return data
+}
+
 func (p *StructPool[T]) GetEmptyData(finalizer bool) *T {
 	v := p.GetData(finalizer)
 
@@ -65,6 +75,16 @@ func (p *StructPool[T]) GetEmptyData(finalizer bool) *T {
 	}
 
 	return v
+}
+
+func (p *StructPool[T]) GetEmptyDataWithInit(finalizer bool, fn func(*T)) *T {
+	data := p.GetEmptyData(finalizer)
+
+	if fn != nil {
+		fn(data)
+	}
+
+	return data
 }
 
 func (p *StructPool[T]) PutData(data *T) {
