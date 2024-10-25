@@ -39,41 +39,41 @@ func NewBytesPool(size int) *BytesPool {
 	return &pool
 }
 
-func (pool *BytesPool) GetSlice() []byte {
-	return pool.pool.Get().([]byte)
+func (p *BytesPool) GetSlice() []byte {
+	return p.pool.Get().([]byte)
 }
 
-func (pool *BytesPool) GetEmptySlice() []byte {
-	bytes := pool.GetSlice()
+func (p *BytesPool) GetEmptySlice() []byte {
+	bytes := p.GetSlice()
 	for idx := range bytes {
 		bytes[idx] = 0
 	}
 	return bytes
 }
 
-func (pool *BytesPool) GetSizedSlice(size int) []byte {
-	if size > pool.size || size <= 0 {
-		size = pool.size
+func (p *BytesPool) GetSizedSlice(size int) []byte {
+	if size > p.size || size <= 0 {
+		size = p.size
 	}
 
-	return pool.GetSlice()[:size]
+	return p.GetSlice()[:size]
 }
 
-func (pool *BytesPool) GetEmptySizedSlice(size int) []byte {
-	if size > pool.size || size <= 0 {
-		size = pool.size
+func (p *BytesPool) GetEmptySizedSlice(size int) []byte {
+	if size > p.size || size <= 0 {
+		size = p.size
 	}
 
-	return pool.GetEmptySlice()[:size]
+	return p.GetEmptySlice()[:size]
 }
 
-func (pool *BytesPool) PutSlice(data []byte) {
+func (p *BytesPool) PutSlice(data []byte) {
 	capSize := cap(data)
-	if capSize < pool.size || capSize > MaxBytesSize {
+	if capSize < p.size || capSize > MaxBytesSize {
 		return
 	}
 
-	pool.pool.Put(data[:pool.size])
+	p.pool.Put(data[:p.size])
 }
 
 func calcSize(size int) int {
