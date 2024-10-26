@@ -33,17 +33,22 @@ func NewStructPool[T any](initializer func(*T) *T) (*StructPool[T], error) {
 	pool := StructPool[T]{
 		size: int(typ.Size()),
 		pool: sync.Pool{New: func() any {
-			data := new(T)
+			v := new(T)
 
 			if initializer != nil {
-				initializer(data)
+				initializer(v)
 			}
 
-			return data
+			return v
 		}},
 
 		ToSlice: converter,
 	}
+
+	if initializer != nil {
+		initializer(data)
+	}
+	pool.ReleaseData(data)
 
 	slog.Debug(
 		"created new pool for struct",
