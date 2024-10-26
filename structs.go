@@ -11,7 +11,7 @@ type StructPool[T any] struct {
 	size int
 	pool sync.Pool
 
-	toSlice func(*T) []byte
+	ToSlice func(*T) []byte
 }
 
 func NewStructPool[T any]() (*StructPool[T], error) {
@@ -34,7 +34,7 @@ func NewStructPool[T any]() (*StructPool[T], error) {
 		pool: sync.Pool{New: func() any {
 			return new(T)
 		}},
-		toSlice: converter,
+		ToSlice: converter,
 	}
 
 	slog.Debug(
@@ -86,9 +86,19 @@ func (p *StructPool[T]) ClearData(data *T) *T {
 		return nil
 	}
 
-	under := p.toSlice(data)
+	under := p.ToSlice(data)
 	for idx := 0; idx < len(under); idx++ {
 		under[idx] = 0
+	}
+
+	return data
+}
+
+func (p *StructPool[T]) ClearDataWithInit(data *T, fn func(*T)) *T {
+	p.ClearData(data)
+
+	if fn != nil {
+		fn(data)
 	}
 
 	return data
@@ -99,13 +109,7 @@ func (p *StructPool[T]) GetEmptyData(setFinal bool) *T {
 }
 
 func (p *StructPool[T]) GetEmptyDataWithInit(setFinal bool, fn func(*T)) *T {
-	data := p.GetEmptyData(setFinal)
-
-	if fn != nil {
-		fn(data)
-	}
-
-	return data
+	return p.ClearDataWithInit(p.GetEmptyData(setFinal), fn)
 }
 
 func (p *StructPool[T]) ReleaseData(data *T) {
@@ -130,8 +134,8 @@ func (p *StructPool[T]) Copy(data *T, setFinal bool) *T {
 
 	result := p.GetData(false)
 
-	src := p.toSlice(data)
-	dst := p.toSlice(result)
+	src := p.ToSlice(data)
+	dst := p.ToSlice(result)
 
 	copy(dst, src)
 
@@ -142,7 +146,7 @@ func (p *StructPool[T]) Copy(data *T, setFinal bool) *T {
 	return result
 }
 
-func (p *StructPool[T]) CopyWithModify(data *T, setFinal bool, fn func(*T)) *T {
+func (p *StructPool[T]) CopyWithInit(data *T, setFinal bool, fn func(*T)) *T {
 	result := p.Copy(data, setFinal)
 	if result == nil {
 		return nil
