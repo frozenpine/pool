@@ -11,10 +11,11 @@ type StructPool[T any] struct {
 	size int
 	pool sync.Pool
 
-	ToSlice func(*T) []byte
+	Initialize func(*T)
+	ToSlice    func(*T) []byte
 }
 
-func NewStructPool[T any]() (*StructPool[T], error) {
+func NewStructPool[T any](initializer func(*T) *T) (*StructPool[T], error) {
 	data := new(T)
 	typ := reflect.TypeOf(data).Elem()
 
@@ -32,8 +33,15 @@ func NewStructPool[T any]() (*StructPool[T], error) {
 	pool := StructPool[T]{
 		size: int(typ.Size()),
 		pool: sync.Pool{New: func() any {
-			return new(T)
+			data := new(T)
+
+			if initializer != nil {
+				initializer(data)
+			}
+
+			return data
 		}},
+
 		ToSlice: converter,
 	}
 

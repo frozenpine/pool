@@ -24,14 +24,14 @@ func TestStructSize(t *testing.T) {
 }
 
 func TestStructPool(t *testing.T) {
-	_, err := NewStructPool[int]()
+	_, err := NewStructPool[int](nil)
 	if err == nil {
 		t.Fatal("Pool data type assert failed")
 	} else {
 		t.Log(err)
 	}
 
-	pool, err := NewStructPool[TestStruct]()
+	pool, err := NewStructPool[TestStruct](nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func BenchmarkFinalizer(b *testing.B) {
 }
 
 func BenchmarkStructPool(b *testing.B) {
-	pool, _ := NewStructPool[TestStruct]()
+	pool, _ := NewStructPool[TestStruct](nil)
 
 	b.Run("origin", func(b *testing.B) {
 		cache := map[uintptr]*TestStruct{}
@@ -220,20 +220,20 @@ func BenchmarkGetPool(b *testing.B) {
 
 	b.Run("pointer", func(b *testing.B) {
 		if pool == nil {
-			pool, _ = NewStructPool[TestStruct]()
+			pool, _ = NewStructPool[TestStruct](nil)
 		}
 	})
 
 	b.Run("atomic", func(b *testing.B) {
 		if ptr.Load() == nil {
-			p, _ := NewStructPool[TestStruct]()
+			p, _ := NewStructPool[TestStruct](nil)
 			ptr.CompareAndSwap(nil, p)
 		}
 	})
 }
 
 func TestReturnReffed(t *testing.T) {
-	pool, _ := NewStructPool[TestStruct]()
+	pool, _ := NewStructPool[TestStruct](nil)
 	cache := []*TestStruct{}
 
 	data := pool.GetData(false)
