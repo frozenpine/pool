@@ -15,7 +15,7 @@ type StructPool[T any] struct {
 	ToSlice    func(*T) []byte
 }
 
-func NewStructPool[T any](initializer func(*T) *T) (*StructPool[T], error) {
+func NewStructPool[T any](initializer func(*T)) (*StructPool[T], error) {
 	data := new(T)
 	typ := reflect.TypeOf(data).Elem()
 
@@ -42,7 +42,8 @@ func NewStructPool[T any](initializer func(*T) *T) (*StructPool[T], error) {
 			return v
 		}},
 
-		ToSlice: converter,
+		Initialize: initializer,
+		ToSlice:    converter,
 	}
 
 	if initializer != nil {
