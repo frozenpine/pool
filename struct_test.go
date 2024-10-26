@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -41,7 +42,7 @@ func TestStructPool(t *testing.T) {
 	v1.Name = "test"
 	v1.Age = 123
 
-	pool.PutData(v1)
+	pool.ReleaseData(v1)
 
 	var ptr *TestStruct
 	for idx := 0; idx < 20; idx++ {
@@ -166,7 +167,7 @@ func BenchmarkStructPool(b *testing.B) {
 				}
 				c2[uintptr(unsafe.Pointer(ptr))] = ptr
 				n2++
-				pool.PutData(ptr)
+				pool.ReleaseData(ptr)
 			case ptr = <-ch3:
 				if ptr == nil {
 					r3 = false
@@ -174,7 +175,7 @@ func BenchmarkStructPool(b *testing.B) {
 				}
 				c3[uintptr(unsafe.Pointer(ptr))] = ptr
 				n3++
-				pool.PutData(ptr)
+				pool.ReleaseData(ptr)
 			}
 		}
 
@@ -209,4 +210,44 @@ func BenchmarkStructPool(b *testing.B) {
 
 	exit <- struct{}{}
 	wg.Wait()
+}
+
+func BenchmarkGetPool(b *testing.B) {
+	var (
+		ptr  = atomic.Pointer[StructPool[TestStruct]]{}
+		pool *StructPool[TestStruct]
+	)
+
+	b.Run("pointer", func(b *testing.B) {
+		if pool == nil {
+			pool, _ = NewStructPool[TestStruct]()
+		}
+	})
+
+	b.Run("atomic", func(b *testing.B) {
+		if ptr.Load() == nil {
+			p, _ := NewStructPool[TestStruct]()
+			ptr.CompareAndSwap(nil, p)
+		}
+	})
+}
+
+func TestReturnReffed(t *testing.T) {
+	pool, _ := NewStructPool[TestStruct]()
+	cache := []*TestStruct{}
+
+	data := pool.GetData(false)
+	cache = append(cache, data)
+	pool.ReleaseData(data)
+
+	for idx := 0; idx < 1000000; idx++ {
+		data = pool.GetData(false)
+
+		if data == cache[0] {
+			t.Log("pool get reffed object")
+			break
+		}
+
+		pool.ReleaseData(data)
+	}
 }

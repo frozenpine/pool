@@ -37,8 +37,8 @@ func NewStructPool[T any]() (*StructPool[T], error) {
 		converter: converter,
 	}
 
-	slog.Info(
-		"create new pool for struct",
+	slog.Debug(
+		"created new pool for struct",
 		slog.String("struct", typ.Name()),
 		slog.String("pkg_path", typ.PkgPath()),
 		slog.Int("size", pool.size),
@@ -47,7 +47,7 @@ func NewStructPool[T any]() (*StructPool[T], error) {
 	return &pool, nil
 }
 
-func (p *StructPool[T]) GetData(finalizer bool) *T {
+func (p *StructPool[T]) GetData(setFinal bool) *T {
 	var data *T
 
 	// 确保获取到结构体
@@ -64,16 +64,15 @@ func (p *StructPool[T]) GetData(finalizer bool) *T {
 		}
 	}
 
-	if finalizer {
-		runtime.SetFinalizer(data, nil)
-		runtime.SetFinalizer(data, p.pool.Put)
+	if setFinal {
+		p.RetainData(data)
 	}
 
 	return data
 }
 
-func (p *StructPool[T]) GetDataWithInit(finalizer bool, fn func(*T)) *T {
-	data := p.GetData(finalizer)
+func (p *StructPool[T]) GetDataWithInit(setFinal bool, fn func(*T)) *T {
+	data := p.GetData(setFinal)
 
 	if fn != nil {
 		fn(data)
@@ -82,8 +81,8 @@ func (p *StructPool[T]) GetDataWithInit(finalizer bool, fn func(*T)) *T {
 	return data
 }
 
-func (p *StructPool[T]) GetEmptyData(finalizer bool) *T {
-	v := p.GetData(finalizer)
+func (p *StructPool[T]) GetEmptyData(setFinal bool) *T {
+	v := p.GetData(setFinal)
 
 	data := p.converter(v)
 
@@ -94,8 +93,8 @@ func (p *StructPool[T]) GetEmptyData(finalizer bool) *T {
 	return v
 }
 
-func (p *StructPool[T]) GetEmptyDataWithInit(finalizer bool, fn func(*T)) *T {
-	data := p.GetEmptyData(finalizer)
+func (p *StructPool[T]) GetEmptyDataWithInit(setFinal bool, fn func(*T)) *T {
+	data := p.GetEmptyData(setFinal)
 
 	if fn != nil {
 		fn(data)
@@ -104,12 +103,49 @@ func (p *StructPool[T]) GetEmptyDataWithInit(finalizer bool, fn func(*T)) *T {
 	return data
 }
 
-func (p *StructPool[T]) PutData(data *T) {
+func (p *StructPool[T]) ReleaseData(data *T) {
+	// sync.Pool 已进行空值判断
+	p.pool.Put(data)
+}
+
+func (p *StructPool[T]) RetainData(data *T) {
 	if data == nil {
 		return
 	}
 
-	// 确保已入池的对象没有finalizer
+	// 避免对象上已设置Finalizer，先置空
 	runtime.SetFinalizer(data, nil)
-	p.pool.Put(data)
+	runtime.SetFinalizer(data, p.pool.Put)
+}
+
+func (p *StructPool[T]) Copy(data *T, setFinal bool) *T {
+	if data == nil {
+		return nil
+	}
+
+	result := p.GetData(false)
+
+	src := p.converter(data)
+	dst := p.converter(result)
+
+	copy(dst, src)
+
+	if setFinal {
+		p.RetainData(result)
+	}
+
+	return result
+}
+
+func (p *StructPool[T]) CopyWithModify(data *T, setFinal bool, fn func(*T)) *T {
+	result := p.Copy(data, setFinal)
+	if result == nil {
+		return nil
+	}
+
+	if fn != nil {
+		fn(result)
+	}
+
+	return result
 }

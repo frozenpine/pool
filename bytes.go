@@ -31,12 +31,12 @@ func judgeSize(size int) int {
 }
 
 func NewBytesPool(size int) *BytesPool {
-	pool := BytesPool{
+	p := BytesPool{
 		size: calcSize(judgeSize(size)),
 	}
 
-	pool.pool.New = func() any { return make([]byte, pool.size) }
-	return &pool
+	p.pool.New = func() any { return make([]byte, p.size) }
+	return &p
 }
 
 func (p *BytesPool) GetSlice() []byte {
