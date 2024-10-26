@@ -11,7 +11,7 @@ type StructPool[T any] struct {
 	size int
 	pool sync.Pool
 
-	converter func(*T) []byte
+	toSlice func(*T) []byte
 }
 
 func NewStructPool[T any]() (*StructPool[T], error) {
@@ -34,7 +34,7 @@ func NewStructPool[T any]() (*StructPool[T], error) {
 		pool: sync.Pool{New: func() any {
 			return new(T)
 		}},
-		converter: converter,
+		toSlice: converter,
 	}
 
 	slog.Debug(
@@ -81,16 +81,21 @@ func (p *StructPool[T]) GetDataWithInit(setFinal bool, fn func(*T)) *T {
 	return data
 }
 
-func (p *StructPool[T]) GetEmptyData(setFinal bool) *T {
-	v := p.GetData(setFinal)
-
-	data := p.converter(v)
-
-	for idx := range data {
-		data[idx] = 0
+func (p *StructPool[T]) ClearData(data *T) *T {
+	if data == nil {
+		return nil
 	}
 
-	return v
+	under := p.toSlice(data)
+	for idx := 0; idx < len(under); idx++ {
+		under[idx] = 0
+	}
+
+	return data
+}
+
+func (p *StructPool[T]) GetEmptyData(setFinal bool) *T {
+	return p.ClearData(p.GetData(setFinal))
 }
 
 func (p *StructPool[T]) GetEmptyDataWithInit(setFinal bool, fn func(*T)) *T {
@@ -125,8 +130,8 @@ func (p *StructPool[T]) Copy(data *T, setFinal bool) *T {
 
 	result := p.GetData(false)
 
-	src := p.converter(data)
-	dst := p.converter(result)
+	src := p.toSlice(data)
+	dst := p.toSlice(result)
 
 	copy(dst, src)
 
